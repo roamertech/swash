@@ -3,10 +3,20 @@ import { bootWebMCP, enterMode, getMode, setSelectionTools, diagnostics } from '
 import { patchState, getState } from './webmcp/state';
 import { showConfirmDialog } from './webmcp/confirm';
 import type { ModeName, ToolDef } from './webmcp/types';
+import { siteTools } from './webmcp/tools/site';
 import { selectionTools } from './webmcp/tools/selection';
 import { writeTools } from './webmcp/tools/write';
 import { designTools } from './webmcp/tools/design';
 import { publishTools } from './webmcp/tools/publish';
+import { presetTools } from './webmcp/tools/preset';
+
+
+// Counted from the tool arrays themselves. A hardcoded total goes stale the
+// moment a tool is added — and this number is the whole argument of the pane.
+const TOTAL_TOOLS =
+  1 + // switch_mode, always registered alongside every group
+  siteTools.length + writeTools.length + designTools.length +
+  publishTools.length + presetTools.length + selectionTools.length;
 
 interface Block {
   id: number;
@@ -15,8 +25,6 @@ interface Block {
   asset_id: number | null;
   position: number;
 }
-
-const TOTAL_TOOL_COUNT = 33;
 
 let openPageId: number | null = null;
 let blocks: Block[] = [];
@@ -450,16 +458,21 @@ export function initEditor(): void {
     }
   }
 
+  // Must mirror MODES in webmcp/modes.ts exactly. If the two drift apart, the
+  // pane claims the agent can see something it cannot — which is worse than
+  // showing nothing, because the whole point of the pane is to be trustworthy.
   function toolsForMode(mode: ModeName | null | undefined): ToolDef[] {
     switch (mode) {
+      case 'site':
+        return siteTools;
       case 'write':
         return writeTools;
       case 'design':
-        return designTools;
+        return [...presetTools, ...designTools];
       case 'publish':
         return publishTools;
       default:
-        return [];
+        return siteTools;
     }
   }
 
@@ -494,7 +507,7 @@ export function initEditor(): void {
 
     const count = document.createElement('li');
     count.className = 'tool-count';
-    count.textContent = `${seen.size} tools in scope · ${TOTAL_TOOL_COUNT} in the app`;
+    count.textContent = `${seen.size} tools in scope · ${TOTAL_TOOLS} in the app`;
     toolList.appendChild(count);
   }
 }
