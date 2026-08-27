@@ -7,6 +7,20 @@ use Illuminate\Support\Arr;
 
 class ThemeService
 {
+    /**
+     * Font pairings live in two places: the five built-in pairs in config/swash.php
+     * and the ten curated preset pairs in config/swash_presets.php. Merging them here
+     * rather than inside a config file avoids the config-load-order trap, where
+     * calling config() from within a config file silently yields nothing.
+     */
+    private function typePairs(): array
+    {
+        return array_merge(
+            config('swash.type_pairs', []),
+            config('swash_presets.type_pairs', []),
+        );
+    }
+
     public function css(Theme $theme): string
     {
         $defaults = $this->defaults();
@@ -108,7 +122,7 @@ class ThemeService
 
     private function pair(mixed $typePair): array
     {
-        $pairs = $this->arrayValue(config('swash.type_pairs', []));
+        $pairs = $this->arrayValue($this->typePairs());
 
         if ($pairs === []) {
             return [

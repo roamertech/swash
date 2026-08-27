@@ -52,3 +52,8 @@ Route::prefix('api')->group(function () {
     Route::post('pages/{page}/revert', [App\Http\Controllers\PublishController::class, 'revert']);
     Route::get('pages/{page}/submissions', [App\Http\Controllers\PublishController::class, 'submissions']);
 });
+
+Route::prefix('api')->group(function () {
+    Route::get('presets', [App\Http\Controllers\PresetController::class, 'index']);
+    Route::post('presets/apply', [App\Http\Controllers\PresetController::class, 'apply']);
+});

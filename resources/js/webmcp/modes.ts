@@ -3,44 +3,55 @@ import { patchState, getState } from './state';
 import { siteTools } from './tools/site';
 import { writeTools } from './tools/write';
 import { designTools } from './tools/design';
+import { presetTools } from './tools/preset';
 import { publishTools } from './tools/publish';
 import { selectionTools } from './tools/selection';
 
 const MODES: Record<ModeName, () => ToolDef[]> = {
     site: () => siteTools,
     write: () => writeTools,
-    design: () => designTools,
+    design: () => [...presetTools, ...designTools],
     publish: () => publishTools,
 };
 
 let modeController: AbortController | null = null;
 let selectionController: AbortController | null = null;
 let currentMode: ModeName = 'site';
+let registeredCount = 0;
+const failedTools: string[] = [];
 
 export function getMode(): ModeName {
     return currentMode;
 }
 
-async function registerGroup(tools: ToolDef[], signal: AbortSignal): Promise<void> {
+/**
+ * Registers a group and reports how many tools actually landed.
+ * A failed registration must never be silent: "the object exists" and
+ * "the agent can see 34 tools" are different claims, and only the second
+ * one matters. The count is surfaced in the editor status badge.
+ */
+async function registerGroup(tools: ToolDef[], signal: AbortSignal): Promise<number> {
     if (!document.modelContext) {
-        return;
+        return 0;
     }
 
-    try {
-        for (const tool of tools) {
-            if (signal.aborted) {
-                return;
-            }
+    let registered = 0;
 
-            try {
-                await document.modelContext.registerTool(tool, { signal });
-            } catch (error) {
-                console.warn('[swash] tool registration failed', error);
-            }
+    for (const tool of tools) {
+        if (signal.aborted) {
+            return registered;
         }
-    } catch (error) {
-        console.warn('[swash] tool registration failed', error);
+
+        try {
+            await document.modelContext.registerTool(tool, { signal });
+            registered += 1;
+        } catch (error) {
+            console.warn(`[swash] tool "${tool.name}" failed to register`, error);
+            failedTools.push(tool.name);
+        }
     }
+
+    return registered;
 }
 
 export async function enterMode(mode: ModeName): Promise<void> {
@@ -48,11 +59,17 @@ export async function enterMode(mode: ModeName): Promise<void> {
     modeController = new AbortController();
     currentMode = mode;
 
-    await registerGroup(alwaysOnTools(), modeController.signal);
-    await registerGroup(MODES[mode](), modeController.signal);
+    failedTools.length = 0;
+    const always = await registerGroup(alwaysOnTools(), modeController.signal);
+    const group = await registerGroup(MODES[mode](), modeController.signal);
+    registeredCount = always + group;
 
     patchState({ mode });
-    document.dispatchEvent(new CustomEvent('swash:mode', { detail: { mode } }));
+    document.dispatchEvent(
+        new CustomEvent('swash:mode', {
+            detail: { mode, registered: registeredCount, failed: [...failedTools] },
+        }),
+    );
 }
 
 export async function setSelectionTools(active: boolean): Promise<void> {
@@ -124,4 +141,12 @@ export async function bootWebMCP(): Promise<void> {
 
 export function wrongMode(needed: ModeName, action: string): string {
     return `Cannot ${action} in ${currentMode} mode. Call switch_mode with mode "${needed}" first, then retry.`;
+}
+
+export function diagnostics(): { available: boolean; registered: number; failed: string[] } {
+    return {
+        available: typeof document.modelContext?.registerTool === 'function',
+        registered: registeredCount,
+        failed: [...failedTools],
+    };
 }

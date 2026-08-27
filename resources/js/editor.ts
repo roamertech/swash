@@ -1,5 +1,5 @@
 import { api } from './webmcp/api';
-import { bootWebMCP, enterMode, getMode, setSelectionTools } from './webmcp/modes';
+import { bootWebMCP, enterMode, getMode, setSelectionTools, diagnostics } from './webmcp/modes';
 import { patchState, getState } from './webmcp/state';
 import { showConfirmDialog } from './webmcp/confirm';
 import type { ModeName, ToolDef } from './webmcp/types';
@@ -32,14 +32,57 @@ export function initEditor(): void {
   const statusBadge = document.querySelector<HTMLElement>('#webmcp-status');
   const resetButton = document.querySelector<HTMLButtonElement>('#reset-demo');
 
-  if (statusBadge) {
-    const hasWebMCP = 'modelContext' in document;
+  // The badge reports what actually happened, not merely that the object exists.
+  // "document.modelContext is present" and "the agent can see the tools" are
+  // different claims; only the second one is useful to a reviewer.
+  const paintStatus = (): void => {
+    if (!statusBadge) return;
+    const d = diagnostics();
     statusBadge.classList.remove('ok', 'warn');
-    statusBadge.classList.add(hasWebMCP ? 'ok' : 'warn');
-    statusBadge.textContent = hasWebMCP
-      ? 'WebMCP ready'
-      : 'WebMCP unavailable — enable chrome://flags/#enable-webmcp-testing';
-  }
+
+    if (!d.available) {
+      statusBadge.classList.add('warn');
+      statusBadge.textContent = 'WebMCP not detected';
+      statusBadge.title =
+        'ChatGPT desktop: Settings > Browser > Permissions > Enable site tools, and use GPT-5.6 Sol or Terra (Luna has WebMCP disabled). Chrome 149+: enable chrome://flags/#enable-webmcp-testing and restart.';
+      showSetupHint();
+      return;
+    }
+
+    if (d.failed.length > 0) {
+      statusBadge.classList.add('warn');
+      statusBadge.textContent = `${d.registered} tools · ${d.failed.length} failed`;
+      statusBadge.title = `Failed to register: ${d.failed.join(', ')}`;
+      return;
+    }
+
+    statusBadge.classList.add('ok');
+    statusBadge.textContent = `${d.registered} tools registered`;
+    statusBadge.title = 'The agent can see these tools right now. Switching mode replaces the set.';
+  };
+
+  const showSetupHint = (): void => {
+    if (document.querySelector('.setup-hint')) return;
+    const bar = document.querySelector('.editor-main');
+    if (!bar) return;
+    const hint = document.createElement('div');
+    hint.className = 'setup-hint';
+    const h = document.createElement('strong');
+    h.textContent = 'This browser is not exposing site tools yet.';
+    const p1 = document.createElement('p');
+    p1.textContent =
+      'ChatGPT desktop app: open Settings > Browser > Permissions and turn on "Enable site tools". Site tools need GPT-5.6 Sol or GPT-5.6 Terra — Luna has WebMCP disabled — and are unavailable in Enterprise and Edu workspaces.';
+    const p2 = document.createElement('p');
+    p2.textContent =
+      'Chrome 149 or later: enable chrome://flags/#enable-webmcp-testing, then fully restart the browser.';
+    const p3 = document.createElement('p');
+    p3.textContent =
+      'The editor still works normally without it — you just cannot drive it with an agent.';
+    hint.append(h, p1, p2, p3);
+    bar.parentElement?.insertBefore(hint, bar);
+  };
+
+  paintStatus();
 
   const syncModeTabs = (): void => {
     const mode = getMode();
@@ -67,6 +110,7 @@ export function initEditor(): void {
   });
 
   document.addEventListener('swash:mode', () => {
+    paintStatus();
     syncModeTabs();
     void refreshToolList();
   });
