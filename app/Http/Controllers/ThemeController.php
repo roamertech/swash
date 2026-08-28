@@ -39,7 +39,10 @@ class ThemeController
             'mood' => ['nullable', 'string', 'max:120'],
         ]);
 
-        Cache::put('swash.theme.previous', $theme->tokens);
+        Cache::put('swash.theme.previous', [
+            'name' => $theme->name,
+            'tokens' => $theme->tokens,
+        ]);
 
         $theme->tokens = $service->merge(
             $theme->tokens ?? [],
@@ -63,7 +66,17 @@ class ThemeController
         $theme = $this->site()->theme;
 
         if (Cache::has('swash.theme.previous')) {
-            $theme->tokens = Cache::get('swash.theme.previous');
+            $previous = Cache::get('swash.theme.previous');
+
+            // Accept the old tokens-only cache shape so a deploy can safely
+            // revert a theme that was changed before this compatibility fix.
+            if (is_array($previous) && array_key_exists('tokens', $previous)) {
+                $theme->tokens = $previous['tokens'];
+                $theme->name = $previous['name'] ?? $theme->name;
+            } else {
+                $theme->tokens = $previous;
+            }
+
             $theme->save();
 
             Cache::forget('swash.theme.previous');
@@ -74,6 +87,7 @@ class ThemeController
                     'name' => $theme->name,
                     'tokens' => $theme->tokens,
                 ],
+                'css' => $service->css($theme),
                 'reverted' => true,
             ];
         }
@@ -84,6 +98,7 @@ class ThemeController
                 'name' => $theme->name,
                 'tokens' => $theme->tokens,
             ],
+            'css' => $service->css($theme),
             'reverted' => false,
         ];
     }

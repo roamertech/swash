@@ -1,4 +1,5 @@
 import type { SharedState } from './types';
+import { getModelContext } from './context';
 
 const state: SharedState = {
   mode: 'site',
@@ -36,7 +37,7 @@ function sync(): void {
   };
 
   try {
-    const modelContext = document.modelContext;
+    const modelContext = getModelContext();
 
     if (modelContext && typeof modelContext.provideContext === 'function') {
       modelContext.provideContext(compact);

@@ -24,7 +24,9 @@ class SiteController
             'site' => [
                 'id' => $site->id,
                 'name' => $site->name,
+                'tagline' => $site->tagline,
                 'nav' => $site->nav ?? [],
+                'footer' => $site->footer ?? [],
             ],
             'theme' => [
                 'id' => $site->theme?->id,
@@ -48,6 +50,50 @@ class SiteController
         $site->save();
 
         return response()->json(['nav' => $site->nav]);
+    }
+
+    public function updateIdentity(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'name' => ['required', 'string', 'max:120'],
+            'tagline' => ['nullable', 'string', 'max:180'],
+        ]);
+
+        $site = $this->site();
+        $site->name = trim($validated['name']);
+        $site->tagline = isset($validated['tagline']) ? trim((string) $validated['tagline']) ?: null : null;
+        $site->save();
+
+        return response()->json([
+            'name' => $site->name,
+            'tagline' => $site->tagline,
+        ]);
+    }
+
+    public function updateFooter(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'footer' => ['required', 'array'],
+            'footer.eyebrow' => ['nullable', 'string', 'max:100'],
+            'footer.statement' => ['required', 'string', 'max:360'],
+            'footer.contact_label' => ['nullable', 'string', 'max:60'],
+            'footer.contact_email' => ['required', 'email', 'max:120'],
+            'footer.copyright' => ['nullable', 'string', 'max:160'],
+        ]);
+
+        $site = $this->site();
+        $footer = $validated['footer'];
+
+        foreach (['eyebrow', 'statement', 'contact_label', 'contact_email', 'copyright'] as $key) {
+            if (isset($footer[$key]) && is_string($footer[$key])) {
+                $footer[$key] = trim($footer[$key]);
+            }
+        }
+
+        $site->footer = $footer;
+        $site->save();
+
+        return response()->json(['footer' => $site->footer]);
     }
 
     public function listPages(): JsonResponse

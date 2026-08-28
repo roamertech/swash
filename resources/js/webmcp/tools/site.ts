@@ -2,7 +2,7 @@ import type { ToolDef } from '../types'
 import { api } from '../api'
 import { patchState, getState } from '../state'
 import { confirmWithUser, showConfirmDialog } from '../confirm'
-import { enterMode } from '../modes'
+import { enterModeAfterTool } from '../modes'
 
 const refresh = () => {
   document.dispatchEvent(new CustomEvent('swash:refresh'))
@@ -77,12 +77,98 @@ export const siteTools: ToolDef[] = [
         const mood = tokens?.mood ?? tokens?.vibe ?? 'unknown'
         const labels = navLabels(site?.nav)
         const navigation = labels.length ? labels.join(', ') : 'none'
+        const tagline = site?.tagline ? ` Tagline: ${site.tagline}.` : ''
+        const footerEmail = site?.footer?.contact_email ? ` Footer contact: ${site.footer.contact_email}.` : ''
 
         return clamp(
-          `"${site?.name ?? 'Unknown site'}" — ${data?.page_count ?? 0} pages, theme "${theme?.name ?? 'Unknown theme'}" (${typePair}, ${mood}). Navigation: ${navigation}.`
+          `"${site?.name ?? 'Unknown site'}" — ${data?.page_count ?? 0} pages, theme "${theme?.name ?? 'Unknown theme'}" (${typePair}, ${mood}). Navigation: ${navigation}.${tagline}${footerEmail}`
         )
       } catch (e) {
         return clamp(errorMessage(e, 'Could not load site overview'))
+      }
+    }
+  },
+  {
+    name: 'set_site_identity',
+    description:
+      'Set the public site name and optional brand tagline shown in the global header. This changes the identity of every public page and asks for confirmation.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        site_name: { type: 'string', description: 'The public brand or organization name.' },
+        tagline: { type: 'string', description: 'A short descriptor displayed beneath the site name.' }
+      },
+      required: ['site_name']
+    },
+    async execute(input: any, client: any) {
+      try {
+        const name = String(input?.site_name ?? '').trim()
+        const tagline = String(input?.tagline ?? '').trim()
+
+        if (!name) return 'A site_name is required.'
+
+        const confirmed = await confirmWithUser(client, () =>
+          showConfirmDialog({
+            title: 'Update the public site identity?',
+            body: `Every public page will show “${name}”${tagline ? ` with the tagline “${tagline}”` : ''}.`,
+            confirmLabel: 'Update identity'
+          })
+        )
+
+        if (!confirmed) return 'The editor declined; the site identity was not changed.'
+
+        const data = await api('/site/identity', {
+          method: 'PATCH',
+          body: JSON.stringify({ name, tagline: tagline || null })
+        })
+
+        refresh()
+        return clamp(`Updated the public site identity to “${data?.name ?? name}”${data?.tagline ? ` — ${data.tagline}` : ''}.`)
+      } catch (e) {
+        return clamp(errorMessage(e, 'Could not update site identity'))
+      }
+    }
+  },
+  {
+    name: 'set_footer',
+    description:
+      'Set the global public footer: studio statement, contact email, and optional eyebrow, contact call-to-action label, and copyright line. This replaces the current footer content on every public page.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        statement: { type: 'string', description: 'A concise statement about the organization or its work.' },
+        contact_email: { type: 'string', description: 'The public contact email address.' },
+        eyebrow: { type: 'string', description: 'Optional small location or category line.' },
+        contact_label: { type: 'string', description: 'Optional label for the contact link.' },
+        copyright: { type: 'string', description: 'Optional legal or copyright line.' }
+      },
+      required: ['statement', 'contact_email']
+    },
+    async execute(input: any, _client: any) {
+      try {
+        const statement = String(input?.statement ?? '').trim()
+        const contactEmail = String(input?.contact_email ?? '').trim()
+
+        if (!statement) return 'A footer statement is required.'
+        if (!contactEmail) return 'A contact_email is required.'
+
+        const footer = {
+          statement,
+          contact_email: contactEmail,
+          eyebrow: String(input?.eyebrow ?? '').trim(),
+          contact_label: String(input?.contact_label ?? '').trim(),
+          copyright: String(input?.copyright ?? '').trim()
+        }
+
+        const data = await api('/site/footer', {
+          method: 'PATCH',
+          body: JSON.stringify({ footer })
+        })
+
+        refresh()
+        return clamp(`Updated the global footer. Public contact: ${data?.footer?.contact_email ?? contactEmail}.`)
+      } catch (e) {
+        return clamp(errorMessage(e, 'Could not update footer'))
       }
     }
   },
@@ -170,7 +256,7 @@ export const siteTools: ToolDef[] = [
           cursorBlockId: null
         })
 
-        await enterMode('write')
+        enterModeAfterTool('write')
         refresh()
 
         return clamp(`Opened "${page.title}" and switched to write mode. It has ${page.blocks?.length ?? 0} blocks.`)
@@ -215,7 +301,7 @@ export const siteTools: ToolDef[] = [
           cursorBlockId: null
         })
 
-        await enterMode('write')
+        enterModeAfterTool('write')
         refresh()
 
         return clamp(`Created "${page.title}" (/${page.slug}) as a draft ${page.kind} and opened it.`)
@@ -410,7 +496,7 @@ export const siteTools: ToolDef[] = [
 
         if (Number(openPage?.id) === pageId) {
           patchState({ openPage: null })
-          await enterMode('site')
+          enterModeAfterTool('site')
         }
 
         refresh()

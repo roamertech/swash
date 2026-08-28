@@ -28,6 +28,11 @@ class PublishController
         return $value === null ? null : (string) $value;
     }
 
+    private function enumValue(mixed $value): mixed
+    {
+        return $value instanceof \BackedEnum ? $value->value : $value;
+    }
+
     private function snapshot(Revision $revision): array
     {
         $snapshot = $revision->snapshot ?? $revision->data ?? [];
@@ -123,7 +128,7 @@ class PublishController
             }
         }
 
-        $coverId = $page->cover_media_asset_id ?? $article?->cover_media_asset_id ?? null;
+        $coverId = $article?->cover_asset_id;
 
         if (blank($coverId)) {
             $issues[] = 'No cover image is set.';
@@ -138,16 +143,18 @@ class PublishController
         $paragraphCount = 0;
 
         foreach ($blocks as $block) {
-            if ($block->type === 'heading') {
+            $blockType = $this->enumValue($block->type);
+
+            if ($blockType === 'heading') {
                 $headingCount++;
             }
 
-            if ($block->type === 'paragraph') {
+            if ($blockType === 'paragraph') {
                 $paragraphCount++;
             }
 
-            if ($block->type === 'image') {
-                $assetId = $block->media_asset_id ?? null;
+            if ($blockType === 'image') {
+                $assetId = $block->asset_id;
 
                 if (! $assetId && is_string($block->content)) {
                     $content = trim($block->content);
@@ -349,14 +356,16 @@ class PublishController
 
         $oldStatus = $snapshot['status'] ?? null;
 
-        if ((string) $oldStatus !== (string) $page->status) {
-            $changes[] = 'Status: ' . ($oldStatus ?? '') . ' → ' . ($page->status ?? '');
+        $currentStatus = $this->enumValue($page->status);
+
+        if ((string) $oldStatus !== (string) $currentStatus) {
+            $changes[] = 'Status: ' . ($oldStatus ?? '') . ' → ' . ($currentStatus ?? '');
         }
 
         $currentBlocks = Block::where('page_id', $page->id)
             ->orderBy('position')
             ->orderBy('id')
-            ->get(['id', 'type', 'content', 'position'])
+            ->get(['id', 'type', 'content', 'asset_id', 'position'])
             ->keyBy(fn ($block) => (string) $block->id);
 
         $snapshotBlocks = collect($snapshot['blocks'] ?? [])
@@ -368,18 +377,20 @@ class PublishController
             }
 
             if (! $snapshotBlocks->has($id)) {
-                $changes[] = 'Block #' . $block->id . ' (' . $block->type . ') added';
+                $changes[] = 'Block #' . $block->id . ' (' . $this->enumValue($block->type) . ') added';
                 continue;
             }
 
             $old = $snapshotBlocks->get($id);
+            $blockType = $this->enumValue($block->type);
 
             $edited = ($old['content'] ?? null) !== $block->content
-                || ($old['type'] ?? null) !== $block->type
+                || ($old['type'] ?? null) !== $blockType
+                || ($old['asset_id'] ?? null) !== $block->asset_id
                 || (int) ($old['position'] ?? 0) !== (int) $block->position;
 
             if ($edited) {
-                $changes[] = 'Block #' . $block->id . ' (' . $block->type . ') edited';
+                $changes[] = 'Block #' . $block->id . ' (' . $blockType . ') edited';
             }
         }
 
@@ -407,18 +418,21 @@ class PublishController
             $blocks = Block::where('page_id', $page->id)
                 ->orderBy('position')
                 ->orderBy('id')
-                ->get(['id', 'type', 'content', 'position'])
+                ->get(['id', 'type', 'content', 'asset_id', 'position'])
                 ->map(fn ($block) => [
                     'id' => $block->id,
-                    'type' => $block->type,
+                    'type' => $this->enumValue($block->type),
                     'content' => $block->content,
+                    'asset_id' => $block->asset_id,
                     'position' => $block->position,
                 ])
                 ->all();
 
             $snapshot = [
                 'title' => $page->title,
-                'status' => $page->status,
+                // A revision represents the published state, not the draft
+                // status that happened to exist one line before publishing.
+                'status' => 'published',
                 'blocks' => $blocks,
             ];
 
@@ -429,14 +443,9 @@ class PublishController
             $revision->save();
 
             $page->status = 'published';
-
-            if (! $page->published_at) {
-                $page->published_at = now();
-            }
-
             $page->save();
 
-            if (($page->kind ?? null) === 'post') {
+            if ($this->enumValue($page->kind) === 'post') {
                 $article = Article::where('page_id', $page->id)->first();
 
                 if (! $article) {
@@ -455,7 +464,7 @@ class PublishController
         $page->refresh();
 
         $article = Article::where('page_id', $page->id)->first();
-        $publishedAt = $page->published_at ?? $article?->published_at;
+        $publishedAt = $article?->published_at ?? $page->updated_at;
 
         return [
             'page' => [
@@ -493,9 +502,11 @@ class PublishController
 
             foreach ($snapshot['blocks'] ?? [] as $blockData) {
                 $block = new Block();
+                $block->id = $blockData['id'] ?? null;
                 $block->page_id = $page->id;
                 $block->type = $blockData['type'] ?? 'paragraph';
                 $block->content = $blockData['content'] ?? '';
+                $block->asset_id = $blockData['asset_id'] ?? null;
                 $block->position = $blockData['position'] ?? 0;
                 $block->save();
 

@@ -102,8 +102,8 @@ export function initEditor(): void {
     });
   };
 
-  // IMPORTANT: the tab click and the agent's switch_mode tool both funnel through enterMode(),
-  // so the human and the agent can never disagree about which mode is active.
+  // Tabs switch immediately. Tool-triggered transitions are deferred until the
+  // native execute call settles so Chrome 152 and earlier do not cancel it.
   document.querySelectorAll<HTMLButtonElement>('.mode-tab').forEach((button) => {
     button.addEventListener('click', async () => {
       const mode = button.dataset.mode as ModeName | undefined;
@@ -131,6 +131,41 @@ export function initEditor(): void {
     if (Number.isFinite(id)) {
       void openPage(id);
     }
+  });
+
+  // Tool calls update the shared WebMCP state directly. Keep the human-facing
+  // canvas in lockstep when an agent opens, creates, or deletes a page.
+  document.addEventListener('swash:state', (event) => {
+    const state = (event as CustomEvent).detail as ReturnType<typeof getState> | undefined;
+    const nextId = Number(state?.openPage?.id);
+
+    if (!state?.openPage) {
+      if (openPageId !== null) {
+        openPageId = null;
+        blocks = [];
+        render();
+      }
+      return;
+    }
+
+    if (!Number.isFinite(nextId) || nextId === openPageId) return;
+
+    void (async () => {
+      try {
+        const response = await api<any>('GET', `/pages/${nextId}`);
+        const page = response?.data ?? response;
+
+        // Ignore a stale response if another tool opened a page meanwhile.
+        if (Number(getState().openPage?.id) !== nextId) return;
+
+        openPageId = nextId;
+        blocks = normalizeBlocks(page?.blocks);
+        render();
+        await refreshPageList();
+      } catch (error) {
+        console.error(error);
+      }
+    })();
   });
 
   document.addEventListener('selectionchange', () => {
@@ -165,7 +200,11 @@ export function initEditor(): void {
       if (text.trim().length > 0 && blockId !== null) {
         patchState({ selection: { text, blockId } });
         void setSelectionTools(true);
-      } else {
+      } else if (!getState().selection) {
+        // Native tool discovery can briefly collapse the DOM Selection while
+        // moving focus. Keep an existing selection context until an explicit
+        // human pointer/keyboard action clears it, otherwise the agent can see
+        // a selection tool and lose it immediately before invocation.
         patchState({ selection: null });
         void setSelectionTools(false);
       }
@@ -173,6 +212,21 @@ export function initEditor(): void {
       void refreshToolList();
     }, 150);
   });
+
+  const clearSelectionContext = (): void => {
+    if (!getState().selection) return;
+
+    patchState({ selection: null });
+    void setSelectionTools(false);
+    void refreshToolList();
+  };
+
+  document.addEventListener('pointerdown', clearSelectionContext, true);
+  document.addEventListener('keyup', () => {
+    if ((window.getSelection()?.toString() ?? '').trim() === '') {
+      clearSelectionContext();
+    }
+  }, true);
 
   document.addEventListener('swash:refresh', async () => {
     if (openPageId !== null) {

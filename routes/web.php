@@ -16,6 +16,8 @@ Route::post('/api/demo/reset', [DemoController::class, 'reset']);
 
 Route::prefix('api')->group(function () {
     Route::get('site', [SiteController::class, 'show']);
+    Route::patch('site/identity', [SiteController::class, 'updateIdentity']);
+    Route::patch('site/footer', [SiteController::class, 'updateFooter']);
     Route::patch('site/nav', [SiteController::class, 'updateNav']);
     Route::get('pages', [SiteController::class, 'listPages']);
     Route::post('pages', [SiteController::class, 'createPage']);

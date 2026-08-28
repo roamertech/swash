@@ -3,29 +3,50 @@
 @section('title', $page->title)
 
 @section('body')
+    @php
+        $footer = $site->footer ?? [];
+        $footerEyebrow = data_get($footer, 'eyebrow', 'Independent studio · Taipei / Worldwide');
+        $footerStatement = data_get($footer, 'statement', 'We make focused brands and digital experiences for teams with momentum.');
+        $footerLabel = data_get($footer, 'contact_label', 'Start a conversation');
+        $footerEmail = data_get($footer, 'contact_email', 'hello@example.com');
+        $footerCopyright = data_get($footer, 'copyright', '© '.now()->year.' '.$site->name.'. All rights reserved.');
+        $headingIndex = 0;
+    @endphp
+
+    <a class="skip-link" href="#main-content">Skip to content</a>
+
     <header class="site-header">
-        <a href="{{ url('/') }}" class="site-name">{{ $site->name }}</a>
+        <div class="site-header__inner">
+            <a href="{{ url('/') }}" class="site-brand" aria-label="{{ $site->name }} home">
+                <span class="site-brand__mark" aria-hidden="true">S</span>
+                <span class="site-brand__copy">
+                    <span class="site-brand__name">{{ $site->name }}</span>
+                    @if($site->tagline)
+                        <span class="site-brand__tagline">{{ $site->tagline }}</span>
+                    @endif
+                </span>
+            </a>
 
-        <nav class="site-nav" aria-label="Site navigation">
-            @foreach(($site->nav['items'] ?? []) as $item)
-                @php
-                    $navLabel = data_get($item, 'label', data_get($item, 'title', ''));
-                    $navSlug = data_get($item, 'slug', '');
-                @endphp
+            <nav class="site-nav" aria-label="Site navigation">
+                @foreach(($site->nav['items'] ?? []) as $item)
+                    @php
+                        $navLabel = data_get($item, 'label', data_get($item, 'title', ''));
+                        $navSlug = data_get($item, 'slug', '');
+                        $navHref = $navSlug === 'home' ? url('/') : url('/p/'.$navSlug);
+                    @endphp
 
-                @if($navLabel && $navSlug)
-                    <a
-                        href="{{ url('/p/'.$navSlug) }}"
-                        @if($page->slug === $navSlug) aria-current="page" @endif
-                    >{{ $navLabel }}</a>
-                @endif
-            @endforeach
-        </nav>
+                    @if($navLabel && $navSlug)
+                        <a href="{{ $navHref }}" @if($page->slug === $navSlug) aria-current="page" @endif>{{ $navLabel }}</a>
+                    @endif
+                @endforeach
+            </nav>
 
-        <a href="{{ url('/editor') }}" class="editor-link">Open editor</a>
+            <a href="{{ url('/editor') }}" class="editor-link"><span aria-hidden="true">↗</span> Studio admin</a>
+        </div>
     </header>
 
-    <main class="page">
+    <main id="main-content" class="site-main">
+    <article class="page page--{{ $page->slug }}">
         @foreach($page->blocks as $b)
             @php
                 $blockType = $b->type instanceof \BackedEnum ? $b->type->value : $b->type;
@@ -33,7 +54,14 @@
 
             @switch($blockType)
                 @case('heading')
-                    <h1 class="block-heading" data-block-id="{{ $b->id }}">{{ $b->content }}</h1>
+                    @if($headingIndex === 0)
+                        <h1 class="block-heading @if($page->slug === 'home') block-heading--hero @endif" data-block-id="{{ $b->id }}">{{ $b->content }}</h1>
+                    @else
+                        <h2 class="block-heading" data-block-id="{{ $b->id }}">{{ $b->content }}</h2>
+                    @endif
+                    @php
+                        $headingIndex++;
+                    @endphp
                     @break
 
                 @case('paragraph')
@@ -51,7 +79,7 @@
                     @break
 
                 @case('image')
-                    <figure class="block-image" data-block-id="{{ $b->id }}">
+                    <figure class="block-image @if($page->slug === 'home') block-image--hero @endif" data-block-id="{{ $b->id }}">
                         <img src="{{ $b->asset?->path }}" alt="{{ $b->asset?->alt ?? '' }}" loading="lazy">
                         @if(trim((string) $b->content) !== '')
                             <figcaption>{{ $b->content }}</figcaption>
@@ -116,9 +144,37 @@
                 </form>
             </section>
         @endif
+    </article>
     </main>
 
     <footer class="site-footer">
-        <p>{{ $site->name }} · Built with WebMCP</p>
+        <div class="site-footer__inner">
+            <div class="site-footer__brand">
+                <span class="site-footer__eyebrow">{{ $footerEyebrow }}</span>
+                <p>{{ $footerStatement }}</p>
+            </div>
+
+            <div class="site-footer__links">
+                <span class="site-footer__eyebrow">Explore</span>
+                @foreach(($site->nav['items'] ?? []) as $item)
+                    @php
+                        $navLabel = data_get($item, 'label', data_get($item, 'title', ''));
+                        $navSlug = data_get($item, 'slug', '');
+                    @endphp
+                    @if($navLabel && $navSlug)
+                        <a href="{{ $navSlug === 'home' ? url('/') : url('/p/'.$navSlug) }}">{{ $navLabel }}</a>
+                    @endif
+                @endforeach
+            </div>
+
+            <div class="site-footer__contact">
+                <span class="site-footer__eyebrow">{{ $footerLabel }}</span>
+                <a href="mailto:{{ $footerEmail }}">{{ $footerEmail }}</a>
+            </div>
+        </div>
+        <div class="site-footer__bottom">
+            <span>{{ $footerCopyright }}</span>
+            <span>Designed with intention.</span>
+        </div>
     </footer>
 @endsection

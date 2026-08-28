@@ -59,7 +59,10 @@ class PresetController extends Controller
 
         $current = $theme->tokens ?? $svc->defaults();
 
-        Cache::forever('swash.theme.previous', $current);
+        Cache::forever('swash.theme.previous', [
+            'name' => $theme->name,
+            'tokens' => $current,
+        ]);
 
         $theme->tokens = $svc->merge($current, $preset['tokens'] ?? []);
         $theme->name = $preset['name'] ?? $theme->name;

@@ -18,6 +18,7 @@ class Site extends Model
     {
         return [
             'nav' => 'array',
+            'footer' => 'array',
         ];
     }
 

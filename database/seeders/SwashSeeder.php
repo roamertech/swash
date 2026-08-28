@@ -15,12 +15,20 @@ class SwashSeeder extends Seeder
         DB::transaction(function (): void {
             $site = Site::forceCreate([
                 'name' => 'Swash Demo',
+                'tagline' => 'A calm home for fast-moving work',
                 'nav' => [
                     'items' => [
                         ['label' => 'Home', 'slug' => 'home'],
                         ['label' => 'About', 'slug' => 'about'],
                         ['label' => 'Journal', 'slug' => 'journal'],
                     ],
+                ],
+                'footer' => [
+                    'eyebrow' => 'Independent studio',
+                    'statement' => 'Built with WebMCP: structured content, human review, and confident publishing.',
+                    'contact_label' => 'Open editor',
+                    'contact_email' => 'hello@example.com',
+                    'copyright' => '© 2026 Swash Demo',
                 ],
             ]);
 
@@ -311,4 +319,3 @@ class SwashSeeder extends Seeder
         });
     }
 }
-

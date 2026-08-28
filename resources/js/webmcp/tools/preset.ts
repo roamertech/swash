@@ -149,8 +149,14 @@ export const presetTools: ToolDef[] = [
                 const data = payload(response);
                 const applied = typeof data.applied === 'string' && data.applied.length > 0 ? data.applied : preset;
 
-                if (typeof window !== 'undefined') {
-                    window.dispatchEvent(new CustomEvent('swash:refresh'));
+                if (typeof document !== 'undefined') {
+                    const style = document.querySelector<HTMLStyleElement>('#swash-theme');
+
+                    if (style && typeof data.css === 'string') {
+                        style.textContent = data.css;
+                    }
+
+                    document.dispatchEvent(new CustomEvent('swash:refresh'));
                 }
 
                 return `Applied ${applied}. The whole site now uses it. Use revert_theme to go back.`;

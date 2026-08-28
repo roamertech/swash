@@ -16,6 +16,14 @@ const refresh = (): void => {
     document.dispatchEvent(new CustomEvent('swash:refresh'));
 };
 
+const applyThemeCss = (response: any): void => {
+    const style = document.querySelector<HTMLStyleElement>('#swash-theme');
+
+    if (style && typeof response?.css === 'string') {
+        style.textContent = response.css;
+    }
+};
+
 const failure = (error: unknown, fallback: string): string => {
     if (typeof error === 'string' && error.trim() !== '') {
         return clip(error);
@@ -247,11 +255,17 @@ export const designTools: ToolDef[] = [
                     return 'The editor declined to change the theme. Nothing was changed.';
                 }
 
-                await api('/theme', {
+                const response = await api('/theme', {
                     method: 'PATCH',
-                    body: JSON.stringify({ tokens: nextTokens }),
+                    body: JSON.stringify({
+                        palette: nextTokens.palette,
+                        type_pair: nextTokens.type_pair,
+                        scale: nextTokens.scale,
+                        mood: nextTokens.mood,
+                    }),
                 });
 
+                applyThemeCss(response);
                 refresh();
 
                 return clip(`Theme updated. Changed:\n${changes.join('\n')}`);
@@ -283,11 +297,12 @@ export const designTools: ToolDef[] = [
                     return `Unknown type pair. Use one of: ${TYPE_PAIRS.join(', ')}.`;
                 }
 
-                await api('/theme', {
+                const response = await api('/theme', {
                     method: 'PATCH',
-                    body: JSON.stringify({ tokens: { type_pair: typePair } }),
+                    body: JSON.stringify({ type_pair: typePair }),
                 });
 
+                applyThemeCss(response);
                 refresh();
 
                 return `Type pair updated to "${typePair}".`;
@@ -326,6 +341,7 @@ export const designTools: ToolDef[] = [
                     return 'There is no earlier theme to go back to.';
                 }
 
+                applyThemeCss(response);
                 refresh();
 
                 return 'The previous theme was restored.';

@@ -6,6 +6,7 @@ import { designTools } from './tools/design';
 import { presetTools } from './tools/preset';
 import { publishTools } from './tools/publish';
 import { selectionTools } from './tools/selection';
+import { getModelContext, hasModelContext } from './context';
 
 const MODES: Record<ModeName, () => ToolDef[]> = {
     site: () => siteTools,
@@ -31,7 +32,9 @@ export function getMode(): ModeName {
  * one matters. The count is surfaced in the editor status badge.
  */
 async function registerGroup(tools: ToolDef[], signal: AbortSignal): Promise<number> {
-    if (!document.modelContext) {
+    const modelContext = getModelContext();
+
+    if (!modelContext) {
         return 0;
     }
 
@@ -43,7 +46,7 @@ async function registerGroup(tools: ToolDef[], signal: AbortSignal): Promise<num
         }
 
         try {
-            await document.modelContext.registerTool(tool, { signal });
+            await modelContext.registerTool(tool, { signal });
             registered += 1;
         } catch (error) {
             console.warn(`[swash] tool "${tool.name}" failed to register`, error);
@@ -70,6 +73,17 @@ export async function enterMode(mode: ModeName): Promise<void> {
             detail: { mode, registered: registeredCount, failed: [...failedTools] },
         }),
     );
+}
+
+/**
+ * Chrome 152 and earlier cancel an in-flight tool when the AbortSignal used to
+ * register that tool is aborted. A tool that switches its own mode must let
+ * its execute callback settle before replacing the registration group.
+ */
+export function enterModeAfterTool(mode: ModeName): void {
+    window.setTimeout(() => {
+        void enterMode(mode);
+    }, 0);
 }
 
 export async function setSelectionTools(active: boolean): Promise<void> {
@@ -121,7 +135,7 @@ function alwaysOnTools(): ToolDef[] {
                     return 'No page is open. Use open_page from site mode first, which switches to write mode automatically.';
                 }
 
-                await enterMode(mode as ModeName);
+                enterModeAfterTool(mode as ModeName);
                 return `Switched to ${mode} mode.`;
             },
         } as ToolDef,
@@ -129,7 +143,7 @@ function alwaysOnTools(): ToolDef[] {
 }
 
 export async function bootWebMCP(): Promise<void> {
-    if (!document.modelContext) {
+    if (!hasModelContext()) {
         console.warn(
             '[swash] WebMCP is not available in this browser. Enable chrome://flags/#enable-webmcp-testing or use the ChatGPT desktop browser.',
         );
@@ -145,7 +159,7 @@ export function wrongMode(needed: ModeName, action: string): string {
 
 export function diagnostics(): { available: boolean; registered: number; failed: string[] } {
     return {
-        available: typeof document.modelContext?.registerTool === 'function',
+        available: hasModelContext(),
         registered: registeredCount,
         failed: [...failedTools],
     };
