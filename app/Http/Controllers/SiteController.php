@@ -154,6 +154,9 @@ class SiteController
                 'type' => $this->enumValue($block->type),
                 'content' => $block->content,
                 'asset_id' => $block->asset_id,
+                // The editor loads a page through this endpoint, not through
+                // BlockController, so the resolved path has to be here too.
+                'asset_path' => $block->asset?->path,
                 'position' => $block->position,
             ])->all(),
             'article' => $page->article ? [
