@@ -294,25 +294,54 @@ export const writeTools: ToolDef[] = [
   {
     name: 'insert_image',
     description:
-      'Insert an existing library image into the open page. To CREATE a new image, switch to design mode and use generate_image; this tool only places an image that already exists in the library.',
+      'Insert a library image into the open page. Give asset_id, or give query to search the library by keyword and place the best match. To CREATE a new image, switch to design mode and use generate_image.',
     inputSchema: {
       type: 'object',
       properties: {
-        asset_id: { type: 'number' },
-        after_block_id: { type: 'number' },
-        caption: { type: 'string' }
-      },
-      required: ['asset_id']
+        asset_id: { type: 'number', description: 'Id of an image already in the library.' },
+        query: {
+          type: 'string',
+          description: 'Keyword to search the library with, for when the asset id is not known.'
+        },
+        after_block_id: {
+          type: 'number',
+          description: 'Place the image after this block. Appended to the end when omitted.'
+        },
+        caption: { type: 'string', description: 'Caption shown beneath the image.' }
+      }
     },
     async execute(input: any, _client: any) {
       try {
         const page = getState().openPage
         if (!page) return 'No page is open. Use open_page from site mode first.'
 
-        const assetId = Number(input?.asset_id)
+        // search_media lives in design mode, so an agent writing a page had no
+        // way to turn "the harbour photo" into an id without leaving write mode
+        // and losing this tool. Accepting a keyword here keeps the whole insert
+        // inside one mode.
+        let assetId = Number(input?.asset_id)
+        let matched = ''
+        const query = typeof input?.query === 'string' ? input.query.trim() : ''
 
         if (!Number.isFinite(assetId)) {
-          return 'asset_id must be a number.'
+          if (query === '') {
+            return 'Give asset_id, or give query to search the media library by keyword.'
+          }
+
+          const results = await api(`/media?q=${encodeURIComponent(query)}`)
+          const assets = Array.isArray(results?.assets) ? results.assets : []
+
+          if (assets.length === 0) {
+            return `No library image matched "${query}". Switch to design mode and use generate_image to create one.`
+          }
+
+          assetId = Number(assets[0]?.id)
+
+          if (!Number.isFinite(assetId)) {
+            return `The search for "${query}" returned a result without a usable id.`
+          }
+
+          matched = ` (matched "${query}" to ${assets[0]?.alt || `asset #${assetId}`})`
         }
 
         const body: any = {
@@ -334,7 +363,7 @@ export const writeTools: ToolDef[] = [
         refresh()
         patchState({ cursorBlockId: block?.id ?? null })
 
-        return clamp(`Inserted image block #${block?.id} on "${page.title}".`)
+        return clamp(`Inserted image block #${block?.id} on "${page.title}"${matched}.`)
       } catch (e) {
         return clamp(errorMessage(e, 'Could not insert image'))
       }

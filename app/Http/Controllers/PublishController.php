@@ -476,6 +476,43 @@ class PublishController
         ];
     }
 
+    /**
+     * List the saved revisions of a page, newest first.
+     *
+     * revert_to_revision accepts a revision_id, but until this existed no
+     * tool could produce one, so an agent could only ever fall back to "the
+     * previous revision". Restoring a specific version was unreachable
+     * through the tool layer.
+     *
+     * The payload stays deliberately thin: a tool response is capped at 1.5K
+     * characters, so this returns a short header per revision rather than any
+     * snapshot content. Use revert_to_revision to act on one.
+     */
+    public function revisions(Page $page)
+    {
+        $this->site();
+
+        $revisions = Revision::where('page_id', $page->id)
+            ->latest('id')
+            ->limit(20)
+            ->get();
+
+        return [
+            'revisions' => $revisions->map(function (Revision $revision): array {
+                $snapshot = $this->snapshot($revision);
+
+                return [
+                    'id' => $revision->id,
+                    'author' => $revision->author,
+                    'created_at' => $revision->created_at?->toIso8601String(),
+                    'title' => $snapshot['title'] ?? null,
+                    'blocks' => count($snapshot['blocks'] ?? []),
+                ];
+            })->all(),
+            'total' => $revisions->count(),
+        ];
+    }
+
     public function revert(Request $request, Page $page)
     {
         $this->site();

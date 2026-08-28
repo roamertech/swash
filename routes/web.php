@@ -51,6 +51,7 @@ Route::prefix('api')->group(function () {
     Route::post('pages/{page}/links', [App\Http\Controllers\PublishController::class, 'addLink']);
     Route::get('pages/{page}/diff', [App\Http\Controllers\PublishController::class, 'diff']);
     Route::post('pages/{page}/publish', [App\Http\Controllers\PublishController::class, 'publish']);
+    Route::get('pages/{page}/revisions', [App\Http\Controllers\PublishController::class, 'revisions']);
     Route::post('pages/{page}/revert', [App\Http\Controllers\PublishController::class, 'revert']);
     Route::get('pages/{page}/submissions', [App\Http\Controllers\PublishController::class, 'submissions']);
 });

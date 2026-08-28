@@ -439,9 +439,59 @@ export const publishTools: ToolDef[] = [
         },
     },
     {
+        name: 'list_revisions',
+        description:
+            'List saved revisions of the open page, newest first, with the id revert_to_revision needs. Returns one short line per revision, not their contents.',
+        annotations: {
+            readOnlyHint: true,
+        },
+        inputSchema: {
+            type: 'object',
+            properties: {},
+            additionalProperties: false,
+        },
+        execute: async () => {
+            const page = getOpenPage();
+
+            if (!page) {
+                return NO_PAGE_MESSAGE;
+            }
+
+            try {
+                const response = await api(`/pages/${page.id}/revisions`);
+                const revisions = Array.isArray(response?.revisions) ? response.revisions : [];
+
+                if (revisions.length === 0) {
+                    return `"${page.title}" has no saved revisions yet. One is created each time the page is published.`;
+                }
+
+                const lines = revisions.slice(0, 12).map((revision: any, index: number) => {
+                    const when =
+                        typeof revision?.created_at === 'string'
+                            ? revision.created_at.slice(0, 16).replace('T', ' ')
+                            : 'unknown time';
+                    const blocks = Number(revision?.blocks ?? 0);
+                    const marker = index === 0 ? ' (most recent)' : '';
+
+                    return `#${revision.id}${marker} — ${when}, by ${revision.author ?? 'unknown'}, ${blocks} block${blocks === 1 ? '' : 's'}`;
+                });
+
+                const hidden = revisions.length - lines.length;
+
+                if (hidden > 0) {
+                    lines.push(`+${hidden} older revision${hidden === 1 ? '' : 's'} not shown.`);
+                }
+
+                return clip(lines.join('\n'));
+            } catch (error) {
+                return failure(error, 'Failed to list revisions.');
+            }
+        },
+    },
+    {
         name: 'revert_to_revision',
         description:
-            'Revert the open page to a previous revision. If no revision id is given, the most recent previous revision is used.',
+            'Revert the open page to a previous revision. Call list_revisions first to get an id. If no id is given, the most recent previous revision is used.',
         inputSchema: {
             type: 'object',
             properties: {

@@ -610,4 +610,50 @@ export const designTools: ToolDef[] = [
             }
         },
     },
+    {
+        name: 'set_image_alt',
+        description:
+            'Set the alt text of a library image. Use search_media to find the asset id. Alt text is what screen readers announce and what SEO checks look for.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                asset_id: {
+                    type: 'number',
+                    description: 'Id of the image to describe, from search_media.',
+                },
+                alt: {
+                    type: 'string',
+                    description: 'What the image shows, in plain language. 160 characters at most.',
+                },
+            },
+            required: ['asset_id', 'alt'],
+            additionalProperties: false,
+        },
+        execute: async (input: Record<string, any>) => {
+            const assetId = Number(input?.asset_id);
+
+            if (!Number.isFinite(assetId)) {
+                return 'asset_id must be a number. Use search_media to find one.';
+            }
+
+            const alt = typeof input?.alt === 'string' ? input.alt.trim() : '';
+
+            if (alt === '') {
+                return 'alt must describe what the image shows. An empty value would hide the image from screen readers.';
+            }
+
+            try {
+                const response = await api(`/media/${assetId}`, {
+                    method: 'PATCH',
+                    body: { alt },
+                });
+
+                const asset = response?.asset ?? {};
+
+                return clip(`Alt text for asset #${asset.id ?? assetId} is now "${asset.alt ?? alt}".`);
+            } catch (error) {
+                return failure(error, 'Failed to set the alt text.');
+            }
+        },
+    },
 ];
