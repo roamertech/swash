@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
-         bootstrap="vendor/autoload.php"
+         bootstrap="tests/bootstrap.php"
          colors="true"
 >
     <testsuites>
@@ -18,19 +18,53 @@
         </include>
     </source>
     <php>
-        <env name="APP_ENV" value="testing"/>
-        <env name="APP_MAINTENANCE_DRIVER" value="file"/>
-        <env name="BCRYPT_ROUNDS" value="4"/>
-        <env name="BROADCAST_CONNECTION" value="null"/>
-        <env name="CACHE_STORE" value="array"/>
-        <env name="DB_CONNECTION" value="sqlite"/>
-        <env name="DB_DATABASE" value=":memory:"/>
-        <env name="DB_URL" value=""/>
-        <env name="MAIL_MAILER" value="array"/>
-        <env name="QUEUE_CONNECTION" value="sync"/>
-        <env name="SESSION_DRIVER" value="array"/>
-        <env name="PULSE_ENABLED" value="false"/>
-        <env name="TELESCOPE_ENABLED" value="false"/>
-        <env name="NIGHTWATCH_ENABLED" value="false"/>
+        <!--
+            force="true" on every entry is deliberate and must stay.
+
+            Without it PHPUnit leaves an already-set environment variable
+            alone, so a shell, cron job or artisan parent process that
+            exports DB_* silently hands the suite the production database.
+            The suite runs migrate:fresh through RefreshDatabase, so that
+            mistake destroys data rather than merely reporting a wrong result.
+
+            DB_PASSWORD is deliberately absent: it stays in .env, which is not
+            in version control. The database *name* is the safety critical
+            value, it is forced here, and Tests\TestCase refuses to run if it
+            ever resolves to anything but swash_test.
+        -->
+        <env name="APP_ENV" value="testing" force="true"/>
+        <env name="APP_MAINTENANCE_DRIVER" value="file" force="true"/>
+        <env name="BCRYPT_ROUNDS" value="4" force="true"/>
+        <env name="BROADCAST_CONNECTION" value="null" force="true"/>
+        <env name="CACHE_STORE" value="array" force="true"/>
+
+        <!--
+            Postgres, not SQLite. The application depends on Postgres-only
+            behaviour: text[] with a GIN index and the && operator in
+            MediaController::index, ilike, jsonb revision snapshots and
+            timestamptz. On SQLite those paths either fail outright or take a
+            different branch, so a green SQLite suite would prove nothing
+            about the parts of this system most worth testing.
+        -->
+        <env name="DB_CONNECTION" value="pgsql" force="true"/>
+        <env name="DB_HOST" value="127.0.0.1" force="true"/>
+        <env name="DB_PORT" value="5432" force="true"/>
+        <env name="DB_DATABASE" value="swash_test" force="true"/>
+        <env name="DB_USERNAME" value="swash" force="true"/>
+        <env name="DB_URL" value="" force="true"/>
+
+        <env name="MAIL_MAILER" value="array" force="true"/>
+        <env name="QUEUE_CONNECTION" value="sync" force="true"/>
+        <env name="SESSION_DRIVER" value="array" force="true"/>
+        <env name="PULSE_ENABLED" value="false" force="true"/>
+        <env name="TELESCOPE_ENABLED" value="false" force="true"/>
+        <env name="NIGHTWATCH_ENABLED" value="false" force="true"/>
+
+        <!--
+            Image generation costs money per call. Blanking the key forces
+            ImageGenerationService down its documented SVG fallback, so no
+            test can reach api.openai.com even by accident.
+        -->
+        <env name="OPENAI_API_KEY" value="" force="true"/>
     </php>
 </phpunit>
