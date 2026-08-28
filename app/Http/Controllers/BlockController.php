@@ -164,6 +164,9 @@ class BlockController
             'type' => $this->enumValue($block->type),
             'content' => $block->content,
             'asset_id' => $block->asset_id,
+            // The editor renders images too. Without the resolved path it has to
+            // guess a URL, and the guess was /assets/{id}, which is not a route.
+            'asset_path' => $block->asset?->path,
             'position' => $block->position,
         ];
     }

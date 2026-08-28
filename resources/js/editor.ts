@@ -23,6 +23,7 @@ interface Block {
   type: string;
   content: string;
   asset_id: number | null;
+  asset_path: string | null;
   position: number;
 }
 
@@ -310,6 +311,7 @@ export function initEditor(): void {
         type: typeof block.type === 'string' ? block.type : 'paragraph',
         content: typeof block.content === 'string' ? block.content : '',
         asset_id: typeof block.asset_id === 'number' ? block.asset_id : null,
+        asset_path: typeof block.asset_path === 'string' ? block.asset_path : null,
         position: typeof block.position === 'number' ? block.position : 0,
       }))
       .sort((a: Block, b: Block) => a.position - b.position);
@@ -408,9 +410,11 @@ export function initEditor(): void {
         const figure = document.createElement('figure');
 
         const image = document.createElement('img');
-        image.src = block.asset_id
-          ? `/assets/${block.asset_id}`
-          : block.content || 'data:image/gif;base64,R0lGODlhAQABAAAAACw=';
+        // Use the path the server resolved. Building one here produced
+        // /assets/{id}, which has no route and 404s, so every image in the
+        // editor was broken while the public site rendered fine.
+        image.src =
+          block.asset_path || 'data:image/gif;base64,R0lGODlhAQABAAAAACw=';
         image.alt = block.content || `Image ${block.id}`;
 
         const caption = document.createElement('figcaption');
