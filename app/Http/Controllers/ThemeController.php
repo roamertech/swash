@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Site;
 use App\Services\ThemeService;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Illuminate\Support\Facades\Cache;
 
 class ThemeController
@@ -38,7 +39,11 @@ class ThemeController
             // presets write tokens without passing through here. This layer
             // just keeps obvious junk out of the stored token set.
             'palette.*' => ['nullable', 'string', 'max:64'],
-            'type_pair' => ['nullable', 'in:editorial-serif,modern-sans,technical,warm-humanist,bold-display'],
+            // Every preset sets a type_pair from the merged list. Hardcoding
+            // the five base pairs here meant applying any of the ten curated
+            // presets and then round-tripping the theme through this endpoint
+            // failed with 422, blocking all further theme edits.
+            'type_pair' => ['nullable', Rule::in(array_keys($service->typePairs()))],
             'scale' => ['nullable', 'array'],
             'mood' => ['nullable', 'string', 'max:120'],
         ]);

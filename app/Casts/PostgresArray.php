@@ -99,7 +99,14 @@ class PostgresArray implements CastsAttributes
         foreach ($value as $part) {
             $part = (string) $part;
 
-            if ($part === '' || preg_match('/[{},"\s]/', $part) === 1 || str_contains($part, '\\')) {
+            // The bare word null, in any case, is read back by Postgres as a
+            // real NULL array element rather than the string. The tag text is
+            // then lost: it can never match tags && string_to_array(...), and
+            // it round-trips out as an empty string. Quoting keeps it a value.
+            if ($part === ''
+                || strcasecmp($part, 'null') === 0
+                || preg_match('/[{},"\s]/', $part) === 1
+                || str_contains($part, '\\')) {
                 $part = str_replace(['\\', '"'], ['\\\\', '\"'], $part);
                 $parts[] = '"' . $part . '"';
                 continue;

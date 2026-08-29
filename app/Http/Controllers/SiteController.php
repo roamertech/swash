@@ -220,11 +220,14 @@ class SiteController
 
     public function deletePage(Page $page): JsonResponse
     {
-        $page->blocks()->delete();
-        $page->article?->delete();
-        $page->submissions()->delete();
-        $page->revisions()->delete();
-        $page->delete();
+        // blocks, articles, submissions and revisions all carry ON DELETE
+        // CASCADE, so those four statements added no scope — but they ran
+        // outside a transaction, so an interruption between them left a page
+        // stripped of its content while the page row itself survived. One
+        // delete inside a transaction cannot produce that state.
+        DB::transaction(static function () use ($page): void {
+            $page->delete();
+        });
 
         return response()->json(['deleted' => true, 'id' => $page->id]);
     }

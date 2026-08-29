@@ -12,7 +12,10 @@ Route::get('/', [PageController::class, 'home'])->name('home');
 Route::get('/p/{page:slug}', [PageController::class, 'show'])->name('page.show');
 Route::get('/editor', [EditorController::class, 'index'])->name('editor');
 Route::get('/health', [HealthController::class, 'check']);
-Route::post('/api/demo/reset', [DemoController::class, 'reset']);
+// Reset drops and reseeds every table. Unauthenticated by design so a judge
+// can recover the demo, but without a limit it can be held down, and every
+// visitor then sees a site mid-rebuild.
+Route::post('/api/demo/reset', [DemoController::class, 'reset'])->middleware('throttle:1,5');
 
 Route::prefix('api')->group(function () {
     Route::get('site', [SiteController::class, 'show']);
@@ -34,6 +37,7 @@ Route::prefix('api')->group(function () {
 });
 
 Route::post('/p/{page}/submissions', [App\Http\Controllers\PublishController::class, 'storeSubmission'])
+    ->middleware('throttle:5,10')
     ->name('submissions.store');
 
 Route::prefix('api')->group(function () {
@@ -41,9 +45,10 @@ Route::prefix('api')->group(function () {
     Route::patch('theme', [App\Http\Controllers\ThemeController::class, 'update']);
     Route::post('theme/revert', [App\Http\Controllers\ThemeController::class, 'revert']);
     Route::get('media', [App\Http\Controllers\MediaController::class, 'index']);
-    Route::post('media/generate', [App\Http\Controllers\MediaController::class, 'generate']);
+    // Each call can spend real money at the image API.
+    Route::post('media/generate', [App\Http\Controllers\MediaController::class, 'generate'])->middleware('throttle:10,1');
     Route::post('media/svg', [App\Http\Controllers\MediaController::class, 'svg']);
-    Route::post('media/{asset}/regenerate', [App\Http\Controllers\MediaController::class, 'regenerate']);
+    Route::post('media/{asset}/regenerate', [App\Http\Controllers\MediaController::class, 'regenerate'])->middleware('throttle:10,1');
     Route::patch('media/{asset}', [App\Http\Controllers\MediaController::class, 'updateAlt']);
     Route::patch('pages/{page}/seo', [App\Http\Controllers\PublishController::class, 'seo']);
     Route::get('pages/{page}/seo/check', [App\Http\Controllers\PublishController::class, 'seoCheck']);

@@ -13,7 +13,8 @@ class ThemeService
      * rather than inside a config file avoids the config-load-order trap, where
      * calling config() from within a config file silently yields nothing.
      */
-    private function typePairs(): array
+    /** Public so validation can allow every pair, not just the base five. */
+    public function typePairs(): array
     {
         return array_merge(
             config('swash.type_pairs', []),
