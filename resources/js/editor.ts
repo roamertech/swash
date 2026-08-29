@@ -32,6 +32,8 @@ let blocks: Block[] = [];
 let selectionTimer: number | null = null;
 const saveTimers = new Map<number, number>();
 
+/** blockId -> a bound saveBlock call, so a pending edit can be flushed. */
+const pendingSaves = new Map<number, () => Promise<void>>();
 export function initEditor(): void {
   if (!document.querySelector('.editor')) return;
 
@@ -230,6 +232,10 @@ export function initEditor(): void {
   }, true);
 
   document.addEventListener('swash:refresh', async () => {
+    // The human's in-flight edit has to reach the server before we refetch,
+    // or the response overwrites it with the version that never had it.
+    await flushPendingSavesAndWait();
+
     if (openPageId !== null) {
       try {
         const response = await api<any>('GET', `/pages/${openPageId}`);
@@ -317,11 +323,49 @@ export function initEditor(): void {
       .sort((a: Block, b: Block) => a.position - b.position);
   }
 
+  /**
+   * Send any debounced edit before the DOM holding its text is thrown away.
+   *
+   * render() replaces the whole canvas, and it runs on every swash:refresh —
+   * which every mutating write-mode tool fires. A human typing when an agent
+   * touches the page would otherwise have the pending 600ms autosave timer
+   * cancelled and the element replaced with server content, losing the
+   * keystrokes with no error. serializeEditable() reads the element
+   * synchronously at the top of saveBlock(), so firing here still captures
+   * the text.
+   */
+  function flushPendingSaves(): void {
+    for (const [id, save] of pendingSaves) {
+      const timer = saveTimers.get(id);
+      if (timer !== undefined) window.clearTimeout(timer);
+      void save();
+    }
+
+    saveTimers.clear();
+    pendingSaves.clear();
+  }
+
+  /** Same, but waits, so a refetch cannot race ahead of the write. */
+  async function flushPendingSavesAndWait(): Promise<void> {
+    const pending = [...pendingSaves.values()];
+
+    for (const [, timer] of saveTimers) window.clearTimeout(timer);
+    saveTimers.clear();
+    pendingSaves.clear();
+
+    for (const save of pending) {
+      try {
+        await save();
+      } catch (error) {
+        console.error(error);
+      }
+    }
+  }
+
   function render(): void {
     if (!canvas) return;
 
-    saveTimers.forEach((timer) => window.clearTimeout(timer));
-    saveTimers.clear();
+    flushPendingSaves();
     canvas.replaceChildren();
 
     if (openPageId === null) {
@@ -447,10 +491,12 @@ export function initEditor(): void {
 
       const timer = window.setTimeout(() => {
         saveTimers.delete(block.id);
+        pendingSaves.delete(block.id);
         void saveBlock(element, block);
       }, 600);
 
       saveTimers.set(block.id, timer);
+      pendingSaves.set(block.id, () => saveBlock(element, block));
     });
 
     element.addEventListener('focus', () => {

@@ -19,6 +19,7 @@ let modeController: AbortController | null = null;
 let selectionController: AbortController | null = null;
 let currentMode: ModeName = 'site';
 let registeredCount = 0;
+let modeGeneration = 0;
 const failedTools: string[] = [];
 
 export function getMode(): ModeName {
@@ -31,7 +32,11 @@ export function getMode(): ModeName {
  * "the agent can see 34 tools" are different claims, and only the second
  * one matters. The count is surfaced in the editor status badge.
  */
-async function registerGroup(tools: ToolDef[], signal: AbortSignal): Promise<number> {
+async function registerGroup(
+    tools: ToolDef[],
+    signal: AbortSignal,
+    failures: string[] = failedTools,
+): Promise<number> {
     const modelContext = getModelContext();
 
     if (!modelContext) {
@@ -50,7 +55,7 @@ async function registerGroup(tools: ToolDef[], signal: AbortSignal): Promise<num
             registered += 1;
         } catch (error) {
             console.warn(`[swash] tool "${tool.name}" failed to register`, error);
-            failedTools.push(tool.name);
+            failures.push(tool.name);
         }
     }
 
@@ -58,14 +63,32 @@ async function registerGroup(tools: ToolDef[], signal: AbortSignal): Promise<num
 }
 
 export async function enterMode(mode: ModeName): Promise<void> {
+    const generation = ++modeGeneration;
+
     modeController?.abort();
     modeController = new AbortController();
+    const signal = modeController.signal;
     currentMode = mode;
 
-    failedTools.length = 0;
-    const always = await registerGroup(alwaysOnTools(), modeController.signal);
-    const group = await registerGroup(MODES[mode](), modeController.signal);
+    // Failures collect locally. Sharing the module-level array let a call that
+    // had already lost the race contaminate the winner's report.
+    const failures: string[] = [];
+    const always = await registerGroup(alwaysOnTools(), signal, failures);
+    const group = await registerGroup(MODES[mode](), signal, failures);
+
+    // A newer enterMode started while this one was awaiting registration, so
+    // it owns the shared state now. Writing here would publish this call's
+    // mode and count over the newer one's, leaving currentMode, state.mode and
+    // the tools actually registered describing three different things — the
+    // agent then calls tools that were never registered and gets an opaque
+    // "tool not found" with nothing pointing at the cause.
+    if (generation !== modeGeneration) {
+        return;
+    }
+
     registeredCount = always + group;
+    failedTools.length = 0;
+    failedTools.push(...failures);
 
     patchState({ mode });
     document.dispatchEvent(
