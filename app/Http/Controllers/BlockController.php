@@ -17,7 +17,7 @@ class BlockController
         $blocks = Block::where('page_id', $page->id)
             ->orderBy('position')
             ->orderBy('id')
-            ->get();
+            ->get(['id', 'type', 'content', 'position']);
 
         return response()->json([
             'page_id' => $page->id,
@@ -192,6 +192,24 @@ class BlockController
         return mb_substr($content, 0, 80).'…';
     }
 
+    /**
+     * Set every listed block's position in one statement.
+     *
+     * $ids must already be integers; they are interpolated into the CASE.
+     */
+    private function writePositionPass(array $ids, callable $positionFor): void
+    {
+        $cases = '';
+
+        foreach ($ids as $index => $id) {
+            $cases .= ' WHEN ' . (int) $id . ' THEN ' . (int) $positionFor($index);
+        }
+
+        DB::table('blocks')
+            ->whereIn('id', $ids)
+            ->update(['position' => DB::raw('CASE id' . $cases . ' END')]);
+    }
+
     private function writeBlockPositions(array $ids): array
     {
         if (empty($ids)) {
@@ -203,13 +221,13 @@ class BlockController
         $max = Block::whereIn('id', $ids)->max('position') ?? 0;
         $offset = ((int) $max) + count($ids) + 1000;
 
-        foreach ($ids as $index => $id) {
-            Block::whereKey($id)->update(['position' => $offset + $index]);
-        }
-
-        foreach ($ids as $index => $id) {
-            Block::whereKey($id)->update(['position' => $index]);
-        }
+        // Two single-row UPDATEs per block — one to a high offset to dodge the
+        // collision, one to the final value — meant 2N round trips per reorder,
+        // each maintaining the position index. One CASE expression per pass
+        // does the same work in two statements. The ids are already cast to
+        // int above, so interpolating them here cannot carry input.
+        $this->writePositionPass($ids, fn (int $index): int => $offset + $index);
+        $this->writePositionPass($ids, fn (int $index): int => $index);
 
         $result = [];
 

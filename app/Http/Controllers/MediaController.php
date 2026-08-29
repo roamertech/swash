@@ -48,13 +48,35 @@ class MediaController
         if ($request->filled('q')) {
             $q = (string) $request->query('q');
 
-            $query->where(function ($w) use ($q) {
-                $w->whereRaw("tags && string_to_array(?, ',')", [$q])
-                    ->orWhere('alt', 'ilike', '%' . $q . '%');
-            });
+            // The array-overlap search can use the GIN index on tags, but only
+            // on its own. OR'd with an ILIKE that nothing indexes, Postgres
+            // cannot build a BitmapOr and abandons the index entirely —
+            // EXPLAIN confirmed a full scan with media_assets_tags_gin
+            // untouched, which contradicts what the spec claims about this
+            // feature. Running the two branches separately lets the tag search
+            // stay an index lookup.
+            $ids = MediaAsset::query()
+                ->where('site_id', $site->id)
+                ->whereRaw("tags && string_to_array(?, ',')", [$q])
+                ->pluck('id')
+                ->merge(
+                    MediaAsset::query()
+                        ->where('site_id', $site->id)
+                        ->where('alt', 'ilike', '%' . $q . '%')
+                        ->pluck('id')
+                )
+                ->unique()
+                ->values()
+                ->all();
+
+            $query->whereIn('id', $ids);
         }
 
-        $assets = $query->latest('id')->limit(40)->get();
+        // Only the columns the response uses. A bare get() also pulled prompt,
+        // which holds an unbounded generation prompt, on every listing call.
+        $assets = $query->latest('id')->limit(40)->get([
+            'id', 'path', 'alt', 'tags', 'kind', 'source',
+        ]);
 
         return [
             'assets' => $assets->map(fn ($asset) => $this->full($asset))->all(),
