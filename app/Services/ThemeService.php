@@ -39,12 +39,12 @@ class ThemeService
         $pair = $this->pair(Arr::get($tokens, 'type_pair'));
 
         $css = ":root {\n";
-        $css .= '  --swash-bg: ' . ($palette['bg'] ?? $defaults['palette']['bg']) . ";\n";
-        $css .= '  --swash-surface: ' . ($palette['surface'] ?? $defaults['palette']['surface']) . ";\n";
-        $css .= '  --swash-ink: ' . ($palette['ink'] ?? $defaults['palette']['ink']) . ";\n";
-        $css .= '  --swash-ink-muted: ' . ($palette['ink_muted'] ?? $defaults['palette']['ink_muted']) . ";\n";
-        $css .= '  --swash-accent: ' . ($palette['accent'] ?? $defaults['palette']['accent']) . ";\n";
-        $css .= '  --swash-border: ' . ($palette['border'] ?? $defaults['palette']['border']) . ";\n";
+        $css .= '  --swash-bg: ' . $this->colourValue($palette['bg'] ?? null, $defaults['palette']['bg']) . ";\n";
+        $css .= '  --swash-surface: ' . $this->colourValue($palette['surface'] ?? null, $defaults['palette']['surface']) . ";\n";
+        $css .= '  --swash-ink: ' . $this->colourValue($palette['ink'] ?? null, $defaults['palette']['ink']) . ";\n";
+        $css .= '  --swash-ink-muted: ' . $this->colourValue($palette['ink_muted'] ?? null, $defaults['palette']['ink_muted']) . ";\n";
+        $css .= '  --swash-accent: ' . $this->colourValue($palette['accent'] ?? null, $defaults['palette']['accent']) . ";\n";
+        $css .= '  --swash-border: ' . $this->colourValue($palette['border'] ?? null, $defaults['palette']['border']) . ";\n";
         $css .= '  --swash-base-size: ' . $this->pixelValue($scale['base_size'] ?? $defaults['scale']['base_size']) . ";\n";
         $css .= '  --swash-line-height: ' . $this->rawValue($scale['line_height'] ?? $defaults['scale']['line_height']) . ";\n";
         $css .= '  --swash-spacing: ' . $this->numberValue($scale['spacing'] ?? $defaults['scale']['spacing']) . ";\n";
@@ -161,6 +161,57 @@ class ThemeService
         return rtrim(rtrim(number_format($n, 4, '.', ''), '0'), '.') ?: '1';
     }
 
+    /**
+     * Reject anything that could leave the stylesheet.
+     *
+     * css() concatenates these values into a <style> block that a Blade
+     * template prints with {!! !!}. A value carrying </style>, a quote or a
+     * comment opener stops being a CSS value and becomes markup. Presets
+     * write tokens straight to the model, bypassing controller validation,
+     * so the check has to live here, at the point of interpolation.
+     */
+    private function cssSafe(mixed $value, string $fallback): string
+    {
+        if (! is_scalar($value)) {
+            return $fallback;
+        }
+
+        $value = trim((string) $value);
+
+        if ($value === '' || preg_match('/[<>;{}"\'\\\\]|\/\*/', $value) === 1) {
+            return $fallback;
+        }
+
+        return $value;
+    }
+
+    /**
+     * Colours are an allow-list, not a filter: hex, an rgb/hsl function, or a
+     * bare CSS colour keyword. Anything else falls back to the default.
+     */
+    private function colourValue(mixed $value, string $fallback): string
+    {
+        if (! is_string($value)) {
+            return $fallback;
+        }
+
+        $candidate = trim($value);
+
+        if (preg_match('/^#[0-9a-fA-F]{3,8}$/', $candidate) === 1) {
+            return $candidate;
+        }
+
+        if (preg_match('/^(rgb|rgba|hsl|hsla)\\(\\s*[0-9a-zA-Z.,%\\s\\/]+\\)$/', $candidate) === 1) {
+            return $candidate;
+        }
+
+        if (preg_match('/^[a-zA-Z]{3,24}$/', $candidate) === 1) {
+            return $candidate;
+        }
+
+        return $fallback;
+    }
+
     private function pixelValue(mixed $value): string
     {
         if (is_numeric($value)) {
@@ -168,7 +219,7 @@ class ThemeService
         }
 
         if (is_string($value) && trim($value) !== '') {
-            return $value;
+            return $this->cssSafe($value, '0px');
         }
 
         return '0px';
@@ -177,7 +228,7 @@ class ThemeService
     private function rawValue(mixed $value): string
     {
         if (is_scalar($value)) {
-            return (string) $value;
+            return $this->cssSafe($value, '1');
         }
 
         return '1';

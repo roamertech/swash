@@ -290,12 +290,30 @@ class SwashSeeder extends Seeder
                 'published_at' => now(),
             ]);
 
+            // Snapshot the blocks that actually exist. An empty blocks array
+            // here is a landmine: revert() deletes every current block and then
+            // restores whatever the snapshot holds, so a placeholder revision
+            // silently wipes the page on the first revert_to_revision call.
+            $studioSnapshot = Block::where('page_id', $studioPost->id)
+                ->orderBy('position')
+                ->orderBy('id')
+                ->get(['id', 'type', 'content', 'asset_id', 'position'])
+                ->map(fn (Block $block) => [
+                    'id' => $block->id,
+                    'type' => $block->type instanceof \BackedEnum ? $block->type->value : (string) $block->type,
+                    'content' => $block->content,
+                    'asset_id' => $block->asset_id,
+                    'position' => $block->position,
+                ])
+                ->all();
+
             Revision::forceCreate([
                 'page_id' => $studioPost->id,
                 'author' => 'human',
                 'snapshot' => [
                     'title' => $studioPost->title,
-                    'blocks' => [],
+                    'status' => 'draft',
+                    'blocks' => $studioSnapshot,
                 ],
             ]);
 

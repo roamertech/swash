@@ -34,6 +34,10 @@ class ThemeController
 
         $data = $request->validate([
             'palette' => ['nullable', 'array'],
+            // ThemeService sanitises these again at interpolation time, because
+            // presets write tokens without passing through here. This layer
+            // just keeps obvious junk out of the stored token set.
+            'palette.*' => ['nullable', 'string', 'max:64'],
             'type_pair' => ['nullable', 'in:editorial-serif,modern-sans,technical,warm-humanist,bold-display'],
             'scale' => ['nullable', 'array'],
             'mood' => ['nullable', 'string', 'max:120'],
