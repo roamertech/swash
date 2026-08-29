@@ -79,6 +79,7 @@ export const presetTools: ToolDef[] = [
             readOnlyHint: true,
         },
         execute: async () => {
+            try {
             const response = await api('/presets');
             const data = payload(response);
             const presets = Array.isArray(data.presets) ? data.presets : [];
@@ -103,6 +104,15 @@ export const presetTools: ToolDef[] = [
             }
 
             return text;
+            } catch (error) {
+                // Every other tool routes failures through a readable message.
+                // This one threw raw, and its own description tells the agent to
+                // call it first — so the entry point to the whole preset flow
+                // was the one place that could fail opaquely.
+                const message = error instanceof Error && error.message ? error.message : 'unknown error';
+
+                return `Could not list the design presets: ${message}. The list comes from the server, so this is usually temporary — try again.`;
+            }
         },
     },
     {

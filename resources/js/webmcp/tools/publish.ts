@@ -189,15 +189,22 @@ export const publishTools: ToolDef[] = [
     {
         name: 'link_to_page',
         description:
-            'Insert an internal link by page id. Because the target is a known page id, it can never produce a dead internal link.',
+            'Insert an internal link into a block. Give target_page_id, or target_slug to look the page up. Omit block_id to use the block the editor has selected.',
         inputSchema: {
             type: 'object',
             properties: {
-                target_page_id: { type: 'number' },
-                block_id: { type: 'number' },
-                text: { type: 'string' },
+                target_page_id: { type: 'number', description: 'Id of the page to link to.' },
+                target_slug: {
+                    type: 'string',
+                    description: 'Slug of the page to link to, when its id is not known.',
+                },
+                block_id: {
+                    type: 'number',
+                    description: 'Block to put the link in. Defaults to the block the editor is on.',
+                },
+                text: { type: 'string', description: 'The visible link text.' },
             },
-            required: ['target_page_id', 'block_id', 'text'],
+            required: ['text'],
             additionalProperties: false,
         },
         execute: async (input: Record<string, any>) => {
@@ -208,20 +215,53 @@ export const publishTools: ToolDef[] = [
             }
 
             try {
-                const targetPageId = Number(input?.target_page_id);
-                const blockId = Number(input?.block_id);
                 const text = typeof input?.text === 'string' ? input.text.trim() : '';
-
-                if (!Number.isFinite(targetPageId)) {
-                    return 'target_page_id must be a number.';
-                }
-
-                if (!Number.isFinite(blockId)) {
-                    return 'block_id must be a number.';
-                }
 
                 if (!text) {
                     return 'Link text is required.';
+                }
+
+                // Neither id could be obtained from publish mode: list_pages is
+                // in site mode and get_outline is in write mode. Resolving a
+                // slug here, and falling back to the block the editor is on,
+                // keeps the whole action inside one mode.
+                let targetPageId = Number(input?.target_page_id);
+                const targetSlug = typeof input?.target_slug === 'string' ? input.target_slug.trim() : '';
+
+                if (!Number.isFinite(targetPageId)) {
+                    if (targetSlug === '') {
+                        return 'Give target_page_id, or target_slug to look the page up by slug.';
+                    }
+
+                    const listed = await api('/pages');
+                    const listedPages = Array.isArray(listed?.pages) ? listed.pages : [];
+                    const match = listedPages.find(
+                        (candidate: any) => String(candidate?.slug ?? '') === targetSlug,
+                    );
+
+                    if (!match) {
+                        const known = listedPages
+                            .slice(0, 10)
+                            .map((candidate: any) => candidate?.slug)
+                            .filter(Boolean)
+                            .join(', ');
+
+                        return `No page has the slug "${targetSlug}". Known slugs: ${known || 'none'}.`;
+                    }
+
+                    targetPageId = Number(match.id);
+                }
+
+                let blockId = Number(input?.block_id);
+
+                if (!Number.isFinite(blockId)) {
+                    const cursor = Number((getState() as any)?.cursorBlockId);
+
+                    if (!Number.isFinite(cursor)) {
+                        return 'Give block_id, or put the editor cursor in the block that should hold the link.';
+                    }
+
+                    blockId = cursor;
                 }
 
                 const response = await api(`/pages/${page.id}/links`, {

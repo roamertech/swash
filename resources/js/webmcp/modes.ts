@@ -65,6 +65,12 @@ async function registerGroup(
 export async function enterMode(mode: ModeName): Promise<void> {
     const generation = ++modeGeneration;
 
+    // A selection belongs to the page and mode it was made in. Leaving it
+    // registered across a switch let rewrite_selection fire against a block on
+    // a page that is no longer open, silently editing the wrong page.
+    void setSelectionTools(false);
+    patchState({ selection: null });
+
     modeController?.abort();
     modeController = new AbortController();
     const signal = modeController.signal;

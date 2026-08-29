@@ -2,6 +2,19 @@ import type { ToolDef } from '../types';
 import { api } from '../api';
 import { getState, patchState } from '../state';
 
+/**
+ * Every other tool file caps its return value. This one did not, and
+ * selection.text has no length limit upstream — the 200-char truncation in
+ * state.ts only applies to the compact copy sent to provideContext. Selecting
+ * a paragraph therefore produced a reply over the 1.5K single-output limit,
+ * which the host drops silently: the agent gets nothing back from the very
+ * tools this group exists for.
+ */
+function clamp(value: string, max = 1400): string {
+  const text = String(value ?? '');
+  return text.length <= max ? text : `${text.slice(0, Math.max(0, max - 20))}… [truncated]`;
+}
+
 function snippet(value: string, limit = 80): string {
   return value.length > limit ? `${value.slice(0, Math.max(0, limit - 1))}…` : value;
 }
@@ -49,7 +62,7 @@ export const selectionTools: ToolDef[] = [
       }
 
       if (typeof data.replacement !== 'string') {
-        return `Selected text (block #${selection.blockId}): "${selection.text}". Rewrite it as instructed ("${instruction}") and call rewrite_selection again with the replacement parameter.`;
+        return clamp(`Selected text (block #${selection.blockId}): "${selection.text}". Rewrite it as instructed ("${instruction}") and call rewrite_selection again with the replacement parameter.`);
       }
 
       const replacement = data.replacement;
@@ -136,7 +149,7 @@ export const selectionTools: ToolDef[] = [
         return 'No text is selected. Ask the editor to select a passage first.';
       }
 
-      return `Selected passage (block #${selection.blockId}): "${selection.text}". Explain what this passage says and how it fits the draft.`;
+      return clamp(`Selected passage (block #${selection.blockId}): "${selection.text}". Explain what this passage says and how it fits the draft.`);
     },
   },
 ];

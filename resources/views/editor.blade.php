@@ -52,6 +52,7 @@
                 <h2>Tools in scope</h2>
                 <ul id="tool-list" class="tool-list"></ul>
                 <p class="hint">The agent only sees the tools listed here. Switching mode replaces the whole set.</p>
+                <p class="hint">To drive them, open this page in the ChatGPT desktop browser with site tools enabled and just ask — &ldquo;open the Journal page and make the third paragraph shorter&rdquo;. In Chrome, open DevTools and use the WebMCP panel to run a tool by hand.</p>
             </aside>
         </div>
 
