@@ -8,6 +8,8 @@ use App\Models\MediaAsset;
 use App\Models\Site;
 use App\Models\Theme;
 use Illuminate\Http\Client\Response;
+use Illuminate\Contracts\Cache\LockTimeoutException;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -19,25 +21,62 @@ class ImageGenerationService
     {
     }
 
+    /**
+     * Take one slot from today's paid-image budget, or explain why not.
+     *
+     * Two things were wrong with counting rows in media_assets. The count was
+     * read and acted on without a lock, so concurrent requests all saw a
+     * number under the limit and all called the paid API. And demo/reset runs
+     * migrate:fresh, which drops media_assets — and the cache table too — so
+     * anyone could reset the counter to zero by pressing a button and spend
+     * without any cap at all.
+     *
+     * The counter therefore lives in the file cache, which migrate:fresh does
+     * not touch, behind a lock that serialises check-and-increment. The slot
+     * is taken before the API call rather than after, so a failed generation
+     * still costs a slot: over-counting wastes a slot, under-counting spends
+     * real money.
+     *
+     * Returns null when a slot was taken, or a human-readable reason when it
+     * was not.
+     */
+    private function reserveDailySlot(): ?string
+    {
+        $limit = (int) config('swash.image_daily_limit', 200);
+
+        if ($limit <= 0) {
+            return null;
+        }
+
+        $store = Cache::store('file');
+        $key = 'swash:images:' . now()->toDateString();
+        $lock = $store->lock('swash:images:lock', 10);
+
+        try {
+            $lock->block(3);
+
+            $used = (int) $store->get($key, 0);
+
+            if ($used >= $limit) {
+                return 'daily image limit reached';
+            }
+
+            $store->put($key, $used + 1, now()->addDay());
+
+            return null;
+        } catch (LockTimeoutException $e) {
+            return 'image generation is busy right now, try again in a moment';
+        } finally {
+            optional($lock)->release();
+        }
+    }
+
     public function generate(Site $site, Theme $theme, string $prompt, string $placement, bool $transparent = false): array
     {
         $prompt = trim($prompt);
 
         if ($prompt === '') {
             $prompt = 'Abstract visual';
-        }
-
-        $limit = (int) config('swash.image_daily_limit', 200);
-
-        if ($limit > 0) {
-            $generatedToday = MediaAsset::query()
-                ->where('source', 'generated')
-                ->whereBetween('created_at', [now()->startOfDay(), now()->endOfDay()])
-                ->count();
-
-            if ($generatedToday >= $limit) {
-                return $this->svgFallback($site, $theme, $prompt, $placement, 'daily image limit reached');
-            }
         }
 
         $key = trim((string) config('swash.openai_key'));
@@ -52,6 +91,12 @@ class ImageGenerationService
 
         if ($model === '') {
             return $this->svgFallback($site, $theme, $prompt, $placement, 'no image model configured');
+        }
+
+        $reservation = $this->reserveDailySlot();
+
+        if ($reservation !== null) {
+            return $this->svgFallback($site, $theme, $prompt, $placement, $reservation);
         }
 
         $palette = $this->palette($theme);
