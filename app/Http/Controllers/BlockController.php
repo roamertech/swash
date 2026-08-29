@@ -139,17 +139,27 @@ class BlockController
             'position' => ['required', 'integer', 'min:0'],
         ]);
 
-        $ids = Block::where('page_id', $block->page_id)
-            ->where('id', '!=', $block->id)
-            ->orderBy('position')
-            ->orderBy('id')
-            ->pluck('id')
-            ->all();
+        $positions = DB::transaction(function () use ($block, $validated) {
+            // The ordering snapshot used to be read outside the transaction
+            // with no row locks. Two reorders landing together — a human
+            // dragging while an agent calls move_block, which is the ordinary
+            // case for this editor — both read the same order and one was
+            // silently discarded, or the writes interleaved into duplicate
+            // positions, which nothing in the schema prevents. Locking the
+            // page's blocks for the duration makes the second reorder wait and
+            // re-read instead.
+            $ids = Block::where('page_id', $block->page_id)
+                ->orderBy('position')
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->pluck('id')
+                ->all();
 
-        $target = min((int) $validated['position'], count($ids));
-        array_splice($ids, $target, 0, [$block->id]);
+            $ids = array_values(array_filter($ids, static fn ($id) => (int) $id !== (int) $block->id));
 
-        $positions = DB::transaction(function () use ($ids) {
+            $target = min((int) $validated['position'], count($ids));
+            array_splice($ids, $target, 0, [$block->id]);
+
             return $this->writeBlockPositions($ids);
         });
 
