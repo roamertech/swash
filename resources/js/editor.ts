@@ -1,5 +1,8 @@
 import { api } from './webmcp/api';
-import { bootWebMCP, enterMode, getMode, setSelectionTools, diagnostics } from './webmcp/modes';
+import {
+  bootWebMCP, enterMode, getMode, setSelectionTools, diagnostics,
+  currentTools, invokeTool,
+} from './webmcp/modes';
 import { patchState, getState } from './webmcp/state';
 import { showConfirmDialog } from './webmcp/confirm';
 import type { ModeName, ToolDef } from './webmcp/types';
@@ -615,3 +618,24 @@ export function initEditor(): void {
     toolList.appendChild(count);
   }
 }
+
+/**
+ * A console handle for driving the tool layer by hand.
+ *
+ * Chrome exposes document.modelContext for registration, but nothing on the
+ * page side can call a registered tool — that is the agent's half of the API.
+ * Without this, testing a tool means attaching a real agent and asking it
+ * nicely, which is slow, non-deterministic and impossible to repeat.
+ *
+ * It grants nothing the agent does not already have, on a site that has no
+ * login by design, and it is what makes the manual test pass reproducible.
+ */
+(window as unknown as { __swash: unknown }).__swash = {
+  enterMode,
+  getMode,
+  setSelectionTools,
+  currentTools,
+  invokeTool,
+  diagnostics,
+  getState,
+};

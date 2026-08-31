@@ -20,6 +20,17 @@ let selectionController: AbortController | null = null;
 let currentMode: ModeName = 'site';
 let registeredCount = 0;
 let modeGeneration = 0;
+
+/**
+ * Everything the agent can see right now, by name.
+ *
+ * WebMCP is a one-way surface: the page hands tools out, and only the agent
+ * calls them. That leaves a person with no way to exercise a tool by hand,
+ * which makes manual testing depend on having an agent attached. Keeping the
+ * registered definitions here lets the console call the same execute the
+ * agent would, with the same input, and nothing else.
+ */
+const active = new Map<string, ToolDef>();
 const failedTools: string[] = [];
 
 export function getMode(): ModeName {
@@ -53,6 +64,9 @@ async function registerGroup(
         try {
             await modelContext.registerTool(tool, { signal });
             registered += 1;
+
+            active.set(tool.name, tool);
+            signal.addEventListener('abort', () => active.delete(tool.name), { once: true });
         } catch (error) {
             console.warn(`[swash] tool "${tool.name}" failed to register`, error);
             failures.push(tool.name);
@@ -193,6 +207,31 @@ export async function bootWebMCP(): Promise<void> {
 
 export function wrongMode(needed: ModeName, action: string): string {
     return `Cannot ${action} in ${currentMode} mode. Call switch_mode with mode "${needed}" first, then retry.`;
+}
+
+/** Tool names the agent can see at this moment. */
+export function currentTools(): string[] {
+    return [...active.keys()];
+}
+
+/**
+ * Call a registered tool the way the agent would.
+ *
+ * The client argument is null, so confirmWithUser falls back to the page's own
+ * dialog: a destructive tool still stops and waits for a click, which is the
+ * behaviour worth testing rather than skipping.
+ */
+export async function invokeTool(name: string, input: Record<string, unknown> = {}): Promise<unknown> {
+    const tool = active.get(name);
+
+    if (!tool) {
+        throw new Error(
+            `"${name}" is not registered. Mode is "${currentMode}"; in scope: ${[...active.keys()].join(', ')}`,
+        );
+    }
+
+    return (tool as unknown as { execute(input: unknown, client: unknown): Promise<unknown> })
+        .execute(input, null);
 }
 
 export function diagnostics(): { available: boolean; registered: number; failed: string[] } {
