@@ -68,6 +68,14 @@ async function registerGroup(
             active.set(tool.name, tool);
             signal.addEventListener('abort', () => active.delete(tool.name), { once: true });
         } catch (error) {
+            // A mode switch that has been superseded aborts the registration it
+            // was in the middle of. That is the design working, not a failure —
+            // reporting it as one puts a warning in the console during ordinary
+            // use and pushes a healthy tool onto the failed list.
+            if (signal.aborted || (error as { name?: string } | null)?.name === 'AbortError') {
+                return registered;
+            }
+
             console.warn(`[swash] tool "${tool.name}" failed to register`, error);
             failures.push(tool.name);
         }

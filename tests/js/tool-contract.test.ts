@@ -227,6 +227,22 @@ describe('mode registration', () => {
   });
 
   /**
+   * BUG-47. Aborting a superseded registration is the design working. It
+   * used to be reported as a failure, which put a warning in the console for
+   * ordinary mode switching and pushed a healthy tool onto the failed list.
+   */
+  it('a superseded mode switch reports no failed tools', async () => {
+    const { diagnostics } = await import('../../resources/js/webmcp/modes');
+
+    const superseded = enterMode('design' as any);
+    const winner = enterMode('publish' as any);
+
+    await Promise.all([superseded, winner]);
+
+    expect(diagnostics().failed).toEqual([]);
+  });
+
+  /**
    * BUG-39. The slower of two overlapping calls used to publish its own mode
    * over the winner's, leaving the tab, the shared state and the registered
    * tools describing three different things.
