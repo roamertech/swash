@@ -116,6 +116,15 @@ export function enterModeAfterTool(mode: ModeName): void {
 }
 
 export async function setSelectionTools(active: boolean): Promise<void> {
+    // rewrite_selection and explain_selection act on a block inside the open
+    // page, so they only mean anything in write mode. Nothing stopped the
+    // editor registering them after a selection made in site, design or
+    // publish mode: the agent was shown two tools that could not work there,
+    // and the visible count went past its cap.
+    if (active && currentMode !== 'write') {
+        return;
+    }
+
     if (active) {
         if (selectionController) {
             return;
