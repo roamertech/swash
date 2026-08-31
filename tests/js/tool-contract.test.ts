@@ -176,12 +176,14 @@ describe('mode registration', () => {
   let context: ReturnType<typeof installFakeModelContext>;
   let enterMode: typeof import('../../resources/js/webmcp/modes')['enterMode'];
   let setSelectionTools: typeof import('../../resources/js/webmcp/modes')['setSelectionTools'];
+  let getModeFn: typeof import('../../resources/js/webmcp/modes')['getMode'];
 
   beforeEach(async () => {
     context = installFakeModelContext();
     const modes = await import('../../resources/js/webmcp/modes');
     enterMode = modes.enterMode;
     setSelectionTools = modes.setSelectionTools;
+    getModeFn = modes.getMode;
   });
 
   it.each(Object.keys(EXPECTED))('%s mode registers exactly its own tools', async (mode) => {
@@ -224,6 +226,25 @@ describe('mode registration', () => {
 
     await setSelectionTools(false);
     expect(context.visible()).not.toContain('rewrite_selection');
+  });
+
+  /**
+   * BUG-48. open_page defers its switch to write by a tick. A mode change
+   * requested in between used to be silently undone when that deferred call
+   * finally fired, because it starts later and so legitimately wins the
+   * generation check.
+   */
+  it('a deferred mode switch gives way to one requested after it', async () => {
+    const { enterModeAfterTool } = await import('../../resources/js/webmcp/modes');
+
+    await enterMode('site' as any);
+    enterModeAfterTool('write' as any);
+    await enterMode('publish' as any);
+
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(getModeFn()).toBe('publish');
+    expect(context.visible()).toContain('read_submissions');
   });
 
   /**

@@ -132,7 +132,19 @@ export async function enterMode(mode: ModeName): Promise<void> {
  * its execute callback settle before replacing the registration group.
  */
 export function enterModeAfterTool(mode: ModeName): void {
+    // Remember where the world was when this was scheduled. If anything else
+    // changed mode in the meantime — a human clicking a tab, or the agent
+    // calling switch_mode straight after this tool — that intent is newer than
+    // ours, and firing here would silently undo it. The generation guard inside
+    // enterMode cannot catch this case: the deferred call genuinely starts
+    // later, so it legitimately wins the race it should not be in.
+    const scheduledAt = modeGeneration;
+
     window.setTimeout(() => {
+        if (modeGeneration !== scheduledAt) {
+            return;
+        }
+
         void enterMode(mode);
     }, 0);
 }
