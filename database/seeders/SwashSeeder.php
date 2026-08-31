@@ -290,11 +290,19 @@ class SwashSeeder extends Seeder
                 'published_at' => now(),
             ]);
 
-            // Snapshot the blocks that actually exist. An empty blocks array
-            // here is a landmine: revert() deletes every current block and then
-            // restores whatever the snapshot holds, so a placeholder revision
-            // silently wipes the page on the first revert_to_revision call.
-            $studioSnapshot = Block::where('page_id', $studioPost->id)
+            // A revision records a state that was published. The draft post has
+            // never been published, so seeding one for it was wrong twice over:
+            // reverting "restored" a page that had no published version, and
+            // preview_changes answered "no changes since the last publish" for a
+            // page that had never had one — which is precisely the diff the
+            // publish dialog exists to show.
+            //
+            // The published post carries one instead, holding the version from
+            // before its closing paragraph was written. list_revisions has
+            // something to list, revert visibly restores an earlier state, and
+            // the draft shows its whole body as new when it is published.
+            $writingSnapshot = Block::where('page_id', $writingPost->id)
+                ->where('position', '<', 4)
                 ->orderBy('position')
                 ->orderBy('id')
                 ->get(['id', 'type', 'content', 'asset_id', 'position'])
@@ -308,12 +316,12 @@ class SwashSeeder extends Seeder
                 ->all();
 
             Revision::forceCreate([
-                'page_id' => $studioPost->id,
+                'page_id' => $writingPost->id,
                 'author' => 'human',
                 'snapshot' => [
-                    'title' => $studioPost->title,
-                    'status' => 'draft',
-                    'blocks' => $studioSnapshot,
+                    'title' => $writingPost->title,
+                    'status' => 'published',
+                    'blocks' => $writingSnapshot,
                 ],
             ]);
 
