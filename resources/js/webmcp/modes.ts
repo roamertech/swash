@@ -131,6 +131,20 @@ export async function enterMode(mode: ModeName): Promise<void> {
  * register that tool is aborted. A tool that switches its own mode must let
  * its execute callback settle before replacing the registration group.
  */
+let deferredSwitch: Promise<void> = Promise.resolve();
+
+/**
+ * Resolves once a mode change queued by a tool has finished registering.
+ *
+ * enterMode sets currentMode synchronously but registers asynchronously, so
+ * there is a window where getMode() already reports the new mode and no tool
+ * is in scope yet. An agent never sees it — it calls across turns — but a
+ * caller chaining awaits in one context lands in it every time.
+ */
+export function modeSettled(): Promise<void> {
+    return deferredSwitch;
+}
+
 export function enterModeAfterTool(mode: ModeName): void {
     // Remember where the world was when this was scheduled. If anything else
     // changed mode in the meantime — a human clicking a tab, or the agent
@@ -140,13 +154,16 @@ export function enterModeAfterTool(mode: ModeName): void {
     // later, so it legitimately wins the race it should not be in.
     const scheduledAt = modeGeneration;
 
-    window.setTimeout(() => {
-        if (modeGeneration !== scheduledAt) {
-            return;
-        }
+    deferredSwitch = new Promise<void>((resolve) => {
+        window.setTimeout(() => {
+            if (modeGeneration !== scheduledAt) {
+                resolve();
+                return;
+            }
 
-        void enterMode(mode);
-    }, 0);
+            void enterMode(mode).finally(resolve);
+        }, 0);
+    });
 }
 
 export async function setSelectionTools(active: boolean): Promise<void> {

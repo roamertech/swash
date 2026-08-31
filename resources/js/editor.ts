@@ -1,7 +1,7 @@
 import { api } from './webmcp/api';
 import {
   bootWebMCP, enterMode, getMode, setSelectionTools, diagnostics,
-  currentTools, invokeTool,
+  currentTools, invokeTool, modeSettled,
 } from './webmcp/modes';
 import { patchState, getState } from './webmcp/state';
 import { showConfirmDialog } from './webmcp/confirm';
@@ -636,6 +636,7 @@ export function initEditor(): void {
   setSelectionTools,
   currentTools,
   invokeTool,
+  modeSettled,
   diagnostics,
   getState,
 };
